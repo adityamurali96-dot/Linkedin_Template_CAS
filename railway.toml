@@ -1,6 +1,6 @@
 [build]
 
 [deploy]
-startCommand = "gunicorn app:app --bind 0.0.0.0:$PORT"
+startCommand = "gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 2 --access-logfile - --error-logfile -"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
