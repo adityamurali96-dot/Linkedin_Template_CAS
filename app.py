@@ -2,6 +2,7 @@
 Flask web server wrapping crowe_formatter for Railway deployment.
 
 Endpoints:
+    GET  /                 → Web UI for uploading and processing documents
     GET  /health           → Health check (200 OK / 503 if template missing)
     POST /audit            → Upload .docx, returns audited .docx
     POST /convert          → Upload .docx (+optional title), returns converted .docx
@@ -11,7 +12,7 @@ import logging
 import os
 import tempfile
 
-from flask import Flask, request, send_file, jsonify, after_this_request
+from flask import Flask, request, send_file, jsonify, after_this_request, render_template
 
 from crowe_formatter import audit_document, convert_document, TEMPLATE_PATH
 
@@ -26,6 +27,11 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 log = app.logger
+
+
+@app.route("/", methods=["GET"])
+def index():
+    return render_template("index.html")
 
 
 @app.route("/health", methods=["GET"])
