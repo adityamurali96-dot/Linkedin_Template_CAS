@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crowe Document Formatter</title>
+<style>
+  :root {
+    --crowe-amber: #D4A843;
+    --crowe-dark: #1a1a2e;
+    --crowe-darker: #12121f;
+    --crowe-card: #222238;
+    --crowe-border: #333355;
+    --crowe-text: #e8e8f0;
+    --crowe-muted: #9999b0;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: var(--crowe-darker);
+    color: var(--crowe-text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  header {
+    width: 100%;
+    background: var(--crowe-dark);
+    border-bottom: 3px solid var(--crowe-amber);
+    padding: 1.5rem 2rem;
+    text-align: center;
+  }
+
+  header h1 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.02em;
+  }
+
+  header h1 span { color: var(--crowe-amber); }
+
+  header p {
+    color: var(--crowe-muted);
+    font-size: 0.9rem;
+    margin-top: 0.3rem;
+  }
+
+  main {
+    width: 100%;
+    max-width: 560px;
+    padding: 2rem 1.5rem;
+    flex: 1;
+  }
+
+  .card {
+    background: var(--crowe-card);
+    border: 1px solid var(--crowe-border);
+    border-radius: 10px;
+    padding: 2rem;
+  }
+
+  /* Mode toggle */
+  .mode-toggle {
+    display: flex;
+    background: var(--crowe-dark);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+    border: 1px solid var(--crowe-border);
+  }
+
+  .mode-toggle label {
+    flex: 1;
+    text-align: center;
+    padding: 0.75rem;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--crowe-muted);
+    transition: background 0.2s, color 0.2s;
+  }
+
+  .mode-toggle input { display: none; }
+
+  .mode-toggle input:checked + label {
+    background: var(--crowe-amber);
+    color: var(--crowe-dark);
+  }
+
+  .mode-desc {
+    font-size: 0.85rem;
+    color: var(--crowe-muted);
+    margin-bottom: 1.5rem;
+    line-height: 1.5;
+    padding: 0.75rem;
+    background: var(--crowe-dark);
+    border-radius: 6px;
+    border-left: 3px solid var(--crowe-amber);
+  }
+
+  /* Drop zone */
+  .drop-zone {
+    border: 2px dashed var(--crowe-border);
+    border-radius: 8px;
+    padding: 2rem 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    margin-bottom: 1.5rem;
+  }
+
+  .drop-zone:hover,
+  .drop-zone.dragover {
+    border-color: var(--crowe-amber);
+    background: rgba(212, 168, 67, 0.05);
+  }
+
+  .drop-zone .icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+    display: block;
+  }
+
+  .drop-zone p {
+    color: var(--crowe-muted);
+    font-size: 0.9rem;
+  }
+
+  .drop-zone .filename {
+    color: var(--crowe-amber);
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-top: 0.5rem;
+    word-break: break-all;
+  }
+
+  .drop-zone input { display: none; }
+
+  /* Title field */
+  .title-group {
+    margin-bottom: 1.5rem;
+  }
+
+  .title-group label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--crowe-muted);
+    margin-bottom: 0.4rem;
+  }
+
+  .title-group input {
+    width: 100%;
+    padding: 0.7rem 0.9rem;
+    background: var(--crowe-dark);
+    border: 1px solid var(--crowe-border);
+    border-radius: 6px;
+    color: var(--crowe-text);
+    font-size: 0.95rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .title-group input:focus {
+    border-color: var(--crowe-amber);
+  }
+
+  .title-group input::placeholder {
+    color: #666680;
+  }
+
+  /* Submit */
+  button[type="submit"] {
+    width: 100%;
+    padding: 0.85rem;
+    background: var(--crowe-amber);
+    color: var(--crowe-dark);
+    font-size: 1rem;
+    font-weight: 700;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    letter-spacing: 0.02em;
+  }
+
+  button[type="submit"]:hover { opacity: 0.9; }
+
+  button[type="submit"]:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* Status */
+  .status {
+    margin-top: 1rem;
+    padding: 0.75rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    display: none;
+    text-align: center;
+  }
+
+  .status.error {
+    display: block;
+    background: rgba(220, 60, 60, 0.15);
+    color: #f06060;
+    border: 1px solid rgba(220, 60, 60, 0.3);
+  }
+
+  .status.success {
+    display: block;
+    background: rgba(60, 180, 80, 0.15);
+    color: #5cc870;
+    border: 1px solid rgba(60, 180, 80, 0.3);
+  }
+
+  .status.loading {
+    display: block;
+    background: rgba(212, 168, 67, 0.1);
+    color: var(--crowe-amber);
+    border: 1px solid rgba(212, 168, 67, 0.2);
+  }
+
+  /* Spinner */
+  .spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--crowe-amber);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 0.4rem;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  footer {
+    padding: 1.5rem;
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--crowe-muted);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span>Crowe</span> Document Formatter</h1>
+  <p>Audit or convert .docx documents to the Crowe template</p>
+</header>
+
+<main>
+  <div class="card">
+    <form id="form" enctype="multipart/form-data">
+
+      <!-- Mode toggle -->
+      <div class="mode-toggle">
+        <input type="radio" name="mode" id="mode-audit" value="audit" checked>
+        <label for="mode-audit">Audit</label>
+        <input type="radio" name="mode" id="mode-convert" value="convert">
+        <label for="mode-convert">Convert</label>
+      </div>
+
+      <div class="mode-desc" id="mode-desc">
+        Checks your document for formatting violations and highlights them in yellow.
+      </div>
+
+      <!-- File upload drop zone -->
+      <div class="drop-zone" id="drop-zone">
+        <span class="icon">&#128196;</span>
+        <p>Drag & drop a <strong>.docx</strong> file here, or click to browse</p>
+        <div class="filename" id="filename"></div>
+        <input type="file" id="file-input" name="file" accept=".docx">
+      </div>
+
+      <!-- Title (convert only) -->
+      <div class="title-group" id="title-group" style="display:none;">
+        <label for="title-input">Cover Page Title (optional)</label>
+        <input type="text" id="title-input" name="title" placeholder="e.g. Tax Advisory Report 2025">
+      </div>
+
+      <button type="submit" id="submit-btn" disabled>Upload & Process</button>
+
+      <div class="status" id="status"></div>
+    </form>
+  </div>
+</main>
+
+<footer>Crowe Document Formatter &mdash; Upload is processed server-side and not stored.</footer>
+
+<script>
+(function() {
+  const form = document.getElementById('form');
+  const fileInput = document.getElementById('file-input');
+  const dropZone = document.getElementById('drop-zone');
+  const filenameEl = document.getElementById('filename');
+  const submitBtn = document.getElementById('submit-btn');
+  const statusEl = document.getElementById('status');
+  const titleGroup = document.getElementById('title-group');
+  const titleInput = document.getElementById('title-input');
+  const modeDesc = document.getElementById('mode-desc');
+  const modeRadios = document.querySelectorAll('input[name="mode"]');
+
+  const descriptions = {
+    audit: 'Checks your document for formatting violations and highlights them in yellow.',
+    convert: 'Rewrites your document content into the branded Crowe template with proper styles, logos, and layout.'
+  };
+
+  // Mode toggle
+  modeRadios.forEach(function(r) {
+    r.addEventListener('change', function() {
+      var mode = this.value;
+      modeDesc.textContent = descriptions[mode];
+      titleGroup.style.display = mode === 'convert' ? 'block' : 'none';
+      updateButton();
+    });
+  });
+
+  function getMode() {
+    return document.querySelector('input[name="mode"]:checked').value;
+  }
+
+  // File drop zone
+  dropZone.addEventListener('click', function() { fileInput.click(); });
+
+  dropZone.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+  });
+
+  dropZone.addEventListener('dragleave', function() {
+    dropZone.classList.remove('dragover');
+  });
+
+  dropZone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) {
+      fileInput.files = e.dataTransfer.files;
+      onFileSelected();
+    }
+  });
+
+  fileInput.addEventListener('change', onFileSelected);
+
+  function onFileSelected() {
+    var file = fileInput.files[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.docx')) {
+      showStatus('error', 'Please select a .docx file.');
+      filenameEl.textContent = '';
+      submitBtn.disabled = true;
+      return;
+    }
+    filenameEl.textContent = file.name;
+    statusEl.className = 'status';
+    statusEl.style.display = 'none';
+    updateButton();
+  }
+
+  function updateButton() {
+    var hasFile = fileInput.files && fileInput.files.length > 0
+      && fileInput.files[0].name.toLowerCase().endsWith('.docx');
+    submitBtn.disabled = !hasFile;
+    submitBtn.textContent = getMode() === 'audit' ? 'Upload & Audit' : 'Upload & Convert';
+  }
+
+  function showStatus(type, msg) {
+    statusEl.className = 'status ' + type;
+    statusEl.innerHTML = msg;
+    statusEl.style.display = 'block';
+  }
+
+  // Submit
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var mode = getMode();
+    var file = fileInput.files[0];
+    if (!file) return;
+
+    var formData = new FormData();
+    formData.append('file', file);
+    if (mode === 'convert' && titleInput.value.trim()) {
+      formData.append('title', titleInput.value.trim());
+    }
+
+    submitBtn.disabled = true;
+    showStatus('loading', '<span class="spinner"></span> Processing document...');
+
+    fetch('/' + mode, {
+      method: 'POST',
+      body: formData
+    })
+    .then(function(resp) {
+      if (!resp.ok) {
+        return resp.json().then(function(data) {
+          throw new Error(data.error || 'Server error (' + resp.status + ')');
+        });
+      }
+      return resp.blob().then(function(blob) {
+        // Trigger download
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = mode === 'audit' ? 'audited_output.docx' : 'converted_output.docx';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showStatus('success', 'Done! Your file has been downloaded.');
+        submitBtn.disabled = false;
+      });
+    })
+    .catch(function(err) {
+      showStatus('error', err.message);
+      submitBtn.disabled = false;
+    });
+  });
+
+  updateButton();
+})();
+</script>
+</body>
+</html>
