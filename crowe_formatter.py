@@ -19,6 +19,7 @@ Usage:
 
 import argparse
 import copy
+import logging
 import os
 import re
 import shutil
@@ -27,6 +28,8 @@ import tempfile
 import zipfile
 from lxml import etree
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # ─── Namespace map ──────────────────────────────────────────────────────────
 NSMAP = {
@@ -466,7 +469,7 @@ def convert_document(input_path, output_path, title=None):
     content_blocks = parse_user_document(input_path)
 
     if not content_blocks:
-        print("Warning: No content found in the input document.")
+        logger.warning("No content found in the input document.")
         shutil.copy2(str(TEMPLATE_PATH), output_path)
         return
 
@@ -552,7 +555,7 @@ def convert_document(input_path, output_path, title=None):
                    standalone=True)
 
         _repack_docx(tmp_dir, output_path)
-        print(f"✅ Converted document saved to: {output_path}")
+        logger.info("Converted document saved to: %s", output_path)
 
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
