@@ -71,6 +71,11 @@ STYLE_COVER_TITLE = 'CoverText-Aprial18pt'
 # Numbering abstract IDs used in the template
 BULLET_ABSTRACT_ID = '59'  # abstractNumId for standard bullets
 
+# Table shading colors (matching Crowe template branding)
+TABLE_HEADER_FILL = 'F5A800'    # Amber/gold for header row
+TABLE_BODY_FILL   = 'FDF1E7'    # Light cream for data rows
+TABLE_BORDER_COLOR = '011E41'   # Dark navy for borders
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # PARSER — Read user-uploaded .docx into structured content
@@ -79,13 +84,28 @@ BULLET_ABSTRACT_ID = '59'  # abstractNumId for standard bullets
 class ContentBlock:
     """Represents one parsed content element from the user document."""
     def __init__(self, level, text, bold=False, children=None):
-        self.level = level        # 'h1', 'h2', 'h3', 'bullet', 'bullet_bold', 'body', 'body_indent'
+        self.level = level        # 'h1', 'h2', 'h3', 'bullet', 'bullet_bold', 'body', 'body_indent', 'table'
         self.text = text
         self.bold = bold
         self.children = children or []  # For bullet_bold + description pairs
 
     def __repr__(self):
         return f"ContentBlock({self.level}, '{self.text[:50]}...', bold={self.bold})"
+
+
+class TableBlock:
+    """Represents a table parsed from the user document."""
+    def __init__(self, headers, rows, col_widths=None):
+        self.level = 'table'
+        self.headers = headers      # List of cell texts for header row
+        self.rows = rows            # List of lists of cell texts for data rows
+        self.col_widths = col_widths  # List of column widths in twips (optional)
+        self.text = ''              # For compatibility with merge logic
+        self.bold = False
+        self.children = []
+
+    def __repr__(self):
+        return f"TableBlock({len(self.headers)} cols, {len(self.rows)} rows)"
 
 
 def parse_user_document(docx_path):
@@ -104,7 +124,19 @@ def parse_user_document(docx_path):
         body = root.find(f'.//{wn("body")}')
 
         blocks = []
-        for para in body.findall(wn('p')):
+        for child in body:
+            # Handle tables
+            if child.tag == wn('tbl'):
+                table_block = _parse_table(child)
+                if table_block:
+                    blocks.append(table_block)
+                continue
+
+            # Handle paragraphs
+            if child.tag != wn('p'):
+                continue
+
+            para = child
             text = _get_para_text(para)
             if not text.strip():
                 continue
@@ -145,6 +177,49 @@ def _get_para_text(para):
         if t.text:
             texts.append(t.text)
     return ''.join(texts)
+
+
+def _parse_table(tbl):
+    """Parse a w:tbl element into a TableBlock."""
+    # Get grid columns for widths
+    grid = tbl.find(wn('tblGrid'))
+    col_widths = []
+    if grid is not None:
+        for gc in grid.findall(wn('gridCol')):
+            w = gc.get(wattr('w'))
+            if w:
+                try:
+                    col_widths.append(int(w))
+                except ValueError:
+                    pass
+
+    rows_data = []
+    for tr in tbl.findall(wn('tr')):
+        row_cells = []
+        for tc in tr.findall(wn('tc')):
+            cell_text = _get_cell_text(tc)
+            row_cells.append(cell_text)
+        if row_cells:
+            rows_data.append(row_cells)
+
+    if not rows_data:
+        return None
+
+    # First row is treated as header
+    headers = rows_data[0]
+    data_rows = rows_data[1:]
+
+    return TableBlock(headers, data_rows, col_widths if col_widths else None)
+
+
+def _get_cell_text(tc):
+    """Extract all text from a table cell, joining paragraphs with newlines."""
+    texts = []
+    for p in tc.findall(wn('p')):
+        t = _get_para_text(p)
+        if t.strip():
+            texts.append(t.strip())
+    return '\n'.join(texts)
 
 
 def _get_style(ppr):
@@ -618,6 +693,13 @@ def _build_section2_xml(content_blocks, tree):
         elif block.level == 'bullet':
             paragraphs.append(_make_bullet_body_para(block.text))
 
+        elif block.level == 'table':
+            # Add spacing before table
+            paragraphs.append(_make_empty_para(STYLE_BODY))
+            paragraphs.append(_make_table_xml(block))
+            # Add spacing after table
+            paragraphs.append(_make_empty_para(STYLE_BODY))
+
         elif block.level == 'body':
             paragraphs.append(_make_body_para(block.text))
 
@@ -843,6 +925,151 @@ def _make_body_para(text):
     t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
 
     return para
+
+
+def _make_table_xml(table_block):
+    """
+    Build a w:tbl element from a TableBlock with Crowe-branded shading.
+    Header row gets amber fill, data rows get light cream fill, navy borders.
+    """
+    tbl = etree.Element(wn('tbl'))
+
+    # ── Table properties ──
+    tblPr = etree.SubElement(tbl, wn('tblPr'))
+    tblW = etree.SubElement(tblPr, wn('tblW'))
+    tblW.set(wattr('w'), '5000')
+    tblW.set(wattr('type'), 'pct')
+    jc = etree.SubElement(tblPr, wn('jc'))
+    jc.set(wattr('val'), 'center')
+
+    # Table-level borders
+    tblBorders = etree.SubElement(tblPr, wn('tblBorders'))
+    for side in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+        border = etree.SubElement(tblBorders, wn(side))
+        border.set(wattr('val'), 'single')
+        border.set(wattr('sz'), '8')
+        border.set(wattr('space'), '0')
+        border.set(wattr('color'), TABLE_BORDER_COLOR)
+
+    # Cell margins
+    tblCellMar = etree.SubElement(tblPr, wn('tblCellMar'))
+    cm_left = etree.SubElement(tblCellMar, wn('left'))
+    cm_left.set(wattr('w'), '0')
+    cm_left.set(wattr('type'), 'dxa')
+    cm_right = etree.SubElement(tblCellMar, wn('right'))
+    cm_right.set(wattr('w'), '0')
+    cm_right.set(wattr('type'), 'dxa')
+
+    # ── Grid columns ──
+    num_cols = len(table_block.headers)
+    if table_block.rows:
+        num_cols = max(num_cols, max(len(r) for r in table_block.rows))
+
+    tblGrid = etree.SubElement(tbl, wn('tblGrid'))
+    if table_block.col_widths and len(table_block.col_widths) >= num_cols:
+        for i in range(num_cols):
+            gc = etree.SubElement(tblGrid, wn('gridCol'))
+            gc.set(wattr('w'), str(table_block.col_widths[i]))
+    else:
+        # Distribute evenly across typical A4 content width
+        total_w = 9164
+        col_w = total_w // num_cols
+        for _ in range(num_cols):
+            gc = etree.SubElement(tblGrid, wn('gridCol'))
+            gc.set(wattr('w'), str(col_w))
+
+    # ── Header row ──
+    _add_table_row(tbl, table_block.headers, num_cols, is_header=True)
+
+    # ── Data rows ──
+    for row_data in table_block.rows:
+        _add_table_row(tbl, row_data, num_cols, is_header=False)
+
+    return tbl
+
+
+def _add_table_row(tbl, cells, num_cols, is_header=False):
+    """Add a table row (w:tr) with properly styled cells."""
+    tr = etree.SubElement(tbl, wn('tr'))
+
+    for col_idx in range(num_cols):
+        cell_text = cells[col_idx] if col_idx < len(cells) else ''
+        tc = _make_table_cell(cell_text, is_header)
+        tr.append(tc)
+
+
+def _make_table_cell(text, is_header):
+    """Create a single table cell (w:tc) with Crowe shading."""
+    tc = etree.Element(wn('tc'))
+
+    # ── Cell properties ──
+    tcPr = etree.SubElement(tc, wn('tcPr'))
+
+    # Cell borders
+    tcBorders = etree.SubElement(tcPr, wn('tcBorders'))
+    for side in ('top', 'left', 'bottom', 'right'):
+        border = etree.SubElement(tcBorders, wn(side))
+        border.set(wattr('val'), 'single')
+        border.set(wattr('sz'), '8')
+        border.set(wattr('space'), '0')
+        border.set(wattr('color'), TABLE_BORDER_COLOR)
+
+    # Cell shading — amber for header, cream for data
+    shd = etree.SubElement(tcPr, wn('shd'))
+    shd.set(wattr('val'), 'clear')
+    shd.set(wattr('color'), 'auto')
+    shd.set(wattr('fill'), TABLE_HEADER_FILL if is_header else TABLE_BODY_FILL)
+
+    # Cell margins
+    tcMar = etree.SubElement(tcPr, wn('tcMar'))
+    mar_top = etree.SubElement(tcMar, wn('top'))
+    mar_top.set(wattr('w'), '15')
+    mar_top.set(wattr('type'), 'dxa')
+    mar_left = etree.SubElement(tcMar, wn('left'))
+    mar_left.set(wattr('w'), '97')
+    mar_left.set(wattr('type'), 'dxa')
+    mar_bottom = etree.SubElement(tcMar, wn('bottom'))
+    mar_bottom.set(wattr('w'), '0')
+    mar_bottom.set(wattr('type'), 'dxa')
+    mar_right = etree.SubElement(tcMar, wn('right'))
+    mar_right.set(wattr('w'), '97')
+    mar_right.set(wattr('type'), 'dxa')
+
+    # Vertical alignment
+    vAlign = etree.SubElement(tcPr, wn('vAlign'))
+    vAlign.set(wattr('val'), 'bottom' if is_header else 'center')
+
+    # ── Cell paragraph ──
+    # If text has newlines (multiple paragraphs in source cell), create multiple <w:p>
+    lines = text.split('\n') if text else ['']
+    for line in lines:
+        para = etree.SubElement(tc, wn('p'))
+        ppr = etree.SubElement(para, wn('pPr'))
+        pstyle = etree.SubElement(ppr, wn('pStyle'))
+        pstyle.set(wattr('val'), STYLE_H2)
+        sp = etree.SubElement(ppr, wn('spacing'))
+        sp.set(wattr('line'), '276')
+        sp.set(wattr('lineRule'), 'auto')
+
+        run = etree.SubElement(para, wn('r'))
+        rpr = etree.SubElement(run, wn('rPr'))
+
+        if is_header:
+            b = etree.SubElement(rpr, wn('b'))
+        else:
+            b = etree.SubElement(rpr, wn('b'))
+            b.set(wattr('val'), '0')
+
+        sz = etree.SubElement(rpr, wn('sz'))
+        sz.set(wattr('val'), '20')
+        szCs = etree.SubElement(rpr, wn('szCs'))
+        szCs.set(wattr('val'), '20')
+
+        t = etree.SubElement(run, wn('t'))
+        t.text = line
+        t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
+
+    return tc
 
 
 def _strip_bullet_chars(text):
