@@ -589,9 +589,11 @@ def convert_document(input_path, output_path, title=None):
         sec2_break_para = paragraphs[sec2_break_idx]
         section3_paras = paragraphs[sec2_break_idx + 1:]
 
-        # ── Update cover title if provided ──
+        # ── Update cover title and headers if provided ──
         if title:
             _update_cover_title(section1_paras, title)
+            _update_header_title(tmp_dir, 'header2.xml', title)
+            _update_header_title(tmp_dir, 'header4.xml', title)
 
         # ── Build new Section 2 content ──
         new_section2_paras = _build_section2_xml(content_blocks, tree)
@@ -658,6 +660,43 @@ def _update_cover_title(section1_paras, title):
                     for r in runs[1:]:
                         para.remove(r)
                 return
+
+
+def _update_header_title(tmp_dir, header_filename, title):
+    """
+    Update the title text inside a header XML file.
+    Both header2.xml and header4.xml contain a table with a single cell
+    whose paragraph has the title split across multiple runs.
+    We set the first run's text to the full title and remove extra runs.
+    """
+    header_path = os.path.join(tmp_dir, 'word', header_filename)
+    if not os.path.exists(header_path):
+        return
+
+    tree = etree.parse(header_path)
+    root = tree.getroot()
+
+    # Find the first paragraph inside a table cell that has text runs
+    for para in root.iter(wn('p')):
+        runs = para.findall(wn('r'))
+        # Skip runs that only contain tabs/breaks (no <w:t> element)
+        text_runs = [r for r in runs if r.find(wn('t')) is not None]
+        if not text_runs:
+            continue
+
+        # Found the title paragraph — update first text run, remove the rest
+        first_t = text_runs[0].find(wn('t'))
+        if first_t is not None:
+            first_t.text = title
+            first_t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
+
+        for r in text_runs[1:]:
+            para.remove(r)
+
+        break  # Only update the first matching paragraph
+
+    tree.write(header_path, xml_declaration=True, encoding='UTF-8',
+               standalone=True)
 
 
 def _build_section2_xml(content_blocks, tree):
